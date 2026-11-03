@@ -1,0 +1,13 @@
+{
+  "name": "leadflow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter @leadflow/api dev",
+    "dev:web": "pnpm --filter @leadflow/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "packageManager": "pnpm@11.22.0"
+}   
