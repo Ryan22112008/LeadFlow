@@ -1,19 +1,11 @@
-import Fastify from 'fastify';
-const app = Fastify({
-    logger: true,
-});
-app.get('/health', async () => {
-    return {
-        status: 'ok',
-        application: 'LeadFlow API',
-        timestamp: new Date().toISOString(),
-    };
-});
+import { buildApp } from './app.js';
+import { env } from './config/env.js';
+const app = buildApp();
 const start = async () => {
     try {
         await app.listen({
-            port: 3333,
-            host: '127.0.0.1',
+            port: env.API_PORT,
+            host: env.API_HOST,
         });
     }
     catch (error) {
