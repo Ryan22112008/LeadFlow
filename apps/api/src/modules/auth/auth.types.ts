@@ -35,3 +35,22 @@ export type AuthenticatedPrincipal = {
     empresaId: string;
     papel: 'OWNER' | 'ADMIN' | 'CORRETOR';
 };
+
+export type RefreshTokenRecord = {
+    id: string;
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    revokedAt: Date | null;
+};
+
+export type CreateRefreshTokenInput = {
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+};
+
+export type RefreshSessionResult = {
+    user: AuthenticatedUser;
+    tokens: AuthTokens;
+};

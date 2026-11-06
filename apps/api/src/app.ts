@@ -7,6 +7,7 @@ import { env } from './config/env.js';
 import { AppError } from './errors/app-error.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import registerSwagger from './plugins/swagger.js';
+import cookie from '@fastify/cookie';   
 
 export function buildApp() {
     const app = Fastify({
@@ -15,6 +16,7 @@ export function buildApp() {
 
     app.decorateRequest('user', null);
     app.register(helmet);
+    app.register(cookie);
     
     app.register(cors, {
         origin: env.WEB_ORIGIN,

@@ -25,5 +25,18 @@ export const registerSchema = z.strictObject({
         .min(2, 'O nome da empresa deve ter pelo menos 2 caracteres.')
         .max(150, 'O nome da empresa deve ter no máximo 150 caracteres.'),
 });
+export const loginSchema = z.strictObject({
+    email: z.string()
+        .trim()
+        .toLowerCase()
+        .max(254)
+        .pipe(z.email('Informe um endereço de e-mail válido.')),
+
+    senha: z.string()
+        .min(1, 'A senha é obrigatória.')
+        .max(128, 'A senha deve ter no máximo 128 caracteres.'),
+});
+
+export type LoginInput = z.infer<typeof loginSchema>;
 
 export type RegisterInput = z.infer<typeof registerSchema>;

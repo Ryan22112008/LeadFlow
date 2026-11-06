@@ -1,4 +1,12 @@
-import type { CreateCompanyWithOwnerInput } from './auth.types.js';
+
+import type {
+    AuthenticatedUser,
+    CreateCompanyWithOwnerInput,
+} from './auth.types.js';
+
+export type LoginUserRecord = AuthenticatedUser & {
+    senhaHash: string;
+};
 
 export interface AuthRepository {
     createCompanyWithOwner(
@@ -7,4 +15,8 @@ export interface AuthRepository {
         userId: string;
         companyId: string;
     }>;
+
+    findUserByEmail(
+        email: string,
+    ): Promise<LoginUserRecord | null>;
 }
