@@ -1,0 +1,51 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PapelUsuario {
+  OWNER
+  ADMIN
+  CORRETOR
+}
+
+enum StatusEmpresa {
+  ATIVA
+  SUSPENSA
+  CANCELADA
+}
+
+model Empresa {
+  id        String        @id @default(uuid()) @db.Uuid
+  nome      String        @db.VarChar(120)
+  status    StatusEmpresa @default(ATIVA)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  usuarios Usuario[]
+
+  @@map("empresas")
+}
+
+model Usuario {
+  id        String       @id @default(uuid()) @db.Uuid
+  nome      String       @db.VarChar(120)
+  email     String       @unique(map: "usuarios_email_key") @db.VarChar(255)
+  senhaHash String       @db.VarChar(255)
+  papel     PapelUsuario @default(CORRETOR)
+  ativo     Boolean      @default(true)
+
+  empresaId String  @db.Uuid
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId])
+  @@map("usuarios")
+}
