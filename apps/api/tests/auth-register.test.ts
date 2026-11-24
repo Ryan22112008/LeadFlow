@@ -1,9 +1,12 @@
 import { PapelUsuario, Prisma, StatusEmpresa } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+
 const prismaMocks = vi.hoisted(() => {
   const empresaCreate = vi.fn();
   const usuarioCreate = vi.fn();
+  const disconnect = vi.fn();
+
   const transactionClient = {
     empresa: { create: empresaCreate },
     usuario: { create: usuarioCreate },
@@ -12,13 +15,18 @@ const prismaMocks = vi.hoisted(() => {
   return {
     empresaCreate,
     usuarioCreate,
+    disconnect,
     transactionClient,
     transaction: vi.fn(),
   };
 });
 
+
 vi.mock('../src/shared/prisma.ts', () => ({
-  prisma: { $transaction: prismaMocks.transaction },
+  prisma: {
+    $transaction: prismaMocks.transaction,
+    $disconnect: prismaMocks.disconnect,
+  },
 }));
 
 import { buildApp } from '../src/app.ts';
@@ -60,11 +68,14 @@ beforeEach(() => {
   vi.resetAllMocks();
   prismaMocks.empresaCreate.mockResolvedValue(empresa);
   prismaMocks.usuarioCreate.mockResolvedValue(usuario);
+  prismaMocks.disconnect.mockResolvedValue(undefined);
   useCallbackTransaction();
 });
 
 afterAll(async () => {
   await app.close();
+
+  expect(prismaMocks.disconnect).toHaveBeenCalledOnce();
 });
 
 describe('POST /auth/register', () => {
@@ -103,10 +114,15 @@ describe('POST /auth/register', () => {
     );
   });
 
+
+
   it.each([
     ['missing name', { ...validBody, nome: '' }],
+    ['blank name', { ...validBody, nome: '   ' }],
+    ['blank company name', { ...validBody, nomeEmpresa: '   ' }],
     ['invalid email', { ...validBody, email: 'not-an-email' }],
     ['short password', { ...validBody, senha: 'curta' }],
+    ['password containing only spaces', { ...validBody, senha: '            ' }],
     ['missing required field', { nomeEmpresa: validBody.nomeEmpresa }],
   ])('rejects %s', async (_description, payload) => {
     const response = await app.inject({
@@ -151,7 +167,7 @@ describe('POST /auth/register', () => {
     expect(response.body).not.toContain('Unique constraint failed');
   });
 
-  it('does not commit the company when user creation fails', async () => {
+  it('simulates transaction rollback when user creation fails', async () => {
     const persisted: string[] = [];
     let pendingWrites: string[] = [];
 
@@ -190,5 +206,7 @@ describe('POST /auth/register', () => {
     expect(response.body).not.toContain('sensitive database error');
     expect(persisted).toStrictEqual([]);
     expect(prismaMocks.transaction).toHaveBeenCalledOnce();
+    expect(prismaMocks.empresaCreate).toHaveBeenCalledOnce();
+    expect(prismaMocks.usuarioCreate).toHaveBeenCalledOnce();
   });
 });
