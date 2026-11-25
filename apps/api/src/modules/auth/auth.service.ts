@@ -7,6 +7,9 @@ const ARGON2_MEMORY_KIB = 65_536;
 const ARGON2_PASSES = 3;
 const ARGON2_PARALLELISM = 1;
 const ARGON2_TAG_LENGTH = 32;
+const MAX_CONCURRENT_HASHES = 2;
+
+let activeHashes = 0;
 
 export class EmailAlreadyRegisteredError extends Error {
   constructor() {
@@ -15,38 +18,75 @@ export class EmailAlreadyRegisteredError extends Error {
   }
 }
 
+export class PasswordHashCapacityError extends Error {
+  constructor() {
+    super('Password hashing capacity exceeded');
+    this.name = 'PasswordHashCapacityError';
+  }
+}
+
 function encodeBase64WithoutPadding(value: Buffer): string {
   return value.toString('base64').replace(/=+$/u, '');
 }
 
 function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16);
+  if (activeHashes >= MAX_CONCURRENT_HASHES) {
+    return Promise.reject(new PasswordHashCapacityError());
+  }
 
-  return new Promise((resolve, reject) => {
-    argon2(
-      'argon2id',
-      {
-        message: password,
-        nonce: salt,
-        parallelism: ARGON2_PARALLELISM,
-        tagLength: ARGON2_TAG_LENGTH,
-        memory: ARGON2_MEMORY_KIB,
-        passes: ARGON2_PASSES,
-      },
-      (error, digest) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+  activeHashes++;
 
-        const saltText = encodeBase64WithoutPadding(salt);
-        const digestText = encodeBase64WithoutPadding(digest);
-        resolve(
-          `$argon2id$v=19$m=${ARGON2_MEMORY_KIB},t=${ARGON2_PASSES},p=${ARGON2_PARALLELISM}$${saltText}$${digestText}`,
+  let released = false;
+
+  const releaseHashSlot = (): void => {
+    if (released) {
+      return;
+    }
+
+    released = true;
+    activeHashes--;
+  };
+
+  try {
+    const salt = randomBytes(16);
+
+    return new Promise((resolve, reject) => {
+      try {
+        argon2(
+          'argon2id',
+          {
+            message: password,
+            nonce: salt,
+            parallelism: ARGON2_PARALLELISM,
+            tagLength: ARGON2_TAG_LENGTH,
+            memory: ARGON2_MEMORY_KIB,
+            passes: ARGON2_PASSES,
+          },
+          (error, digest) => {
+            releaseHashSlot();
+
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            const saltText = encodeBase64WithoutPadding(salt);
+            const digestText = encodeBase64WithoutPadding(digest);
+
+            resolve(
+              `$argon2id$v=19$m=${ARGON2_MEMORY_KIB},t=${ARGON2_PASSES},p=${ARGON2_PARALLELISM}$${saltText}$${digestText}`,
+            );
+          },
         );
-      },
-    );
-  });
+      } catch (error: unknown) {
+        releaseHashSlot();
+        reject(error);
+      }
+    });
+  } catch (error: unknown) {
+    releaseHashSlot();
+    return Promise.reject(error);
+  }
 }
 
 function isDuplicateEmailError(error: unknown): boolean {

@@ -1,3 +1,4 @@
+import type { InjectOptions } from 'fastify';
 import { PapelUsuario, Prisma, StatusEmpresa } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -31,7 +32,7 @@ vi.mock('../src/shared/prisma.ts', () => ({
 
 import { buildApp } from '../src/app.ts';
 
-const app = buildApp();
+const app = await buildApp();
 
 const empresa = {
   id: 'company-id',
@@ -52,6 +53,20 @@ const validBody = {
   email: '  ANA@EXAMPLE.COM  ',
   senha: 'senha-segura-de-teste',
 };
+
+let testIpCounter = 1;
+
+function registerRequest(
+  payload: InjectOptions['payload'] = validBody,
+  remoteAddress: string = `10.0.0.${testIpCounter++}`,
+) {
+  return app.inject({
+    method: 'POST',
+    url: '/auth/register',
+    payload,
+    remoteAddress,
+  });
+}
 
 function useCallbackTransaction(): void {
   prismaMocks.transaction.mockImplementation(async (callback: unknown) => {
@@ -80,11 +95,7 @@ afterAll(async () => {
 
 describe('POST /auth/register', () => {
   it('creates a company and assigns OWNER to the first user', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: validBody,
-    });
+    const response = await registerRequest();
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toStrictEqual({ empresa, usuario });
@@ -104,8 +115,35 @@ describe('POST /auth/register', () => {
     );
   });
 
+  it('rejects registration when Argon2 concurrency limit is reached', async () => {
+    const requests = await Promise.all(
+      Array.from({ length: 3 }, () => registerRequest()),
+    );
+
+    const statuses = requests
+      .map((response) => response.statusCode)
+      .sort((a, b) => a - b);
+
+    expect(statuses).toStrictEqual([201, 201, 503]);
+    expect(prismaMocks.transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('limits registration attempts to five per minute per IP', async () => {
+    const rateLimitIp = '192.0.2.10';
+    const invalidPayload = { ...validBody, email: 'not-an-email' };
+    const statuses: number[] = [];
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const response = await registerRequest(invalidPayload, rateLimitIp);
+      statuses.push(response.statusCode);
+    }
+
+    expect(statuses).toStrictEqual([400, 400, 400, 400, 400, 429]);
+    expect(prismaMocks.transaction).not.toHaveBeenCalled();
+  });
+
   it('normalizes the email before persistence', async () => {
-    await app.inject({ method: 'POST', url: '/auth/register', payload: validBody });
+    await registerRequest();
 
     expect(prismaMocks.usuarioCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -125,11 +163,7 @@ describe('POST /auth/register', () => {
     ['password containing only spaces', { ...validBody, senha: '            ' }],
     ['missing required field', { nomeEmpresa: validBody.nomeEmpresa }],
   ])('rejects %s', async (_description, payload) => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload,
-    });
+    const response = await registerRequest(payload);
 
     expect(response.statusCode).toBe(400);
     expect(prismaMocks.transaction).not.toHaveBeenCalled();
@@ -138,10 +172,9 @@ describe('POST /auth/register', () => {
   it.each(['papel', 'empresaId', 'status', 'id', 'campoExtra'])(
     'rejects client supplied %s',
     async (field) => {
-      const response = await app.inject({
-        method: 'POST',
-        url: '/auth/register',
-        payload: { ...validBody, [field]: 'forged-value' },
+      const response = await registerRequest({
+        ...validBody,
+        [field]: 'forged-value',
       });
 
       expect(response.statusCode).toBe(400);
@@ -156,11 +189,7 @@ describe('POST /auth/register', () => {
     );
     prismaMocks.transaction.mockRejectedValue(duplicateEmail);
 
-    const response = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: validBody,
-    });
+    const response = await registerRequest();
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toStrictEqual({ error: 'E-mail já cadastrado' });
@@ -196,11 +225,7 @@ describe('POST /auth/register', () => {
       }
     });
 
-    const response = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: validBody,
-    });
+    const response = await registerRequest();
 
     expect(response.statusCode).toBe(500);
     expect(response.body).not.toContain('sensitive database error');

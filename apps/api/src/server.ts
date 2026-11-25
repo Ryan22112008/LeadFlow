@@ -1,7 +1,7 @@
 import { env } from './config/env.ts';
 import { buildApp } from './app.ts';
 
-const app = buildApp();
+const app = await buildApp();
 
 let isShuttingDown = false;
 

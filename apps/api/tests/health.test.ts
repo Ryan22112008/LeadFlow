@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.ts';
 
-const app = buildApp();
+const app = await buildApp();
 
 afterAll(async () => {
   await app.close();
